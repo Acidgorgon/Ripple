@@ -73,11 +73,14 @@ state Match {
 }
 ```
 
-2. Generate the modules (needs [lune](https://github.com/lune-org/lune)):
+2. Install the compiler with [Rokit](https://github.com/rojo-rbx/rokit) and generate the modules:
 
 ```
-lune run src/init.luau -- game.ripple --out src/shared/Ripple
+rokit add Acidgorgon/Ripple
+ripple game.ripple --out src/shared/Ripple        # add --watch to regenerate on save
 ```
+
+From a checkout you can also run `lune run src/init.luau -- game.ripple --out src/shared/Ripple`.
 
 This writes `Server.luau` and `Client.luau`. Each is self-contained, with no runtime dependency and full
 Luau types for your states.
@@ -201,6 +204,7 @@ Cash tick, where everything ties on the fixed cost of one remote call per player
 ## Layout
 
 - `src/` compiler: `Parser`, `Generator`, `Codec`, `init.luau` (CLI) and `runtime/` (spliced into the output)
+- `scripts/bundle.py` + `.github/workflows/release.yml`: single-file build and the release (Actions > Release)
 - `tests/` correctness suite (`tests/run.luau`, run with the bench host)
 - `bench/` benchmark harness (Luau 0.700 host + Roblox mock) with adapters for every library compared
 - `examples/` FM-shaped schema

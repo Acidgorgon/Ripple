@@ -1,17 +1,26 @@
 # Getting started
 
-## 1. Get the compiler
+## 1. Install the `ripple` command
 
-Ripple is a compiler that turns a `.ripple` schema into two Luau modules. It runs on
-[Lune](https://github.com/lune-org/lune). With [Rokit](https://github.com/rojo-rbx/rokit):
+Ripple is a compiler: it turns a `.ripple` schema into two Luau modules, so there is no runtime package to
+install. Get the command with [Rokit](https://github.com/rojo-rbx/rokit):
 
-```toml
-# rokit.toml
-[tools]
-lune = "lune-org/lune@0.10.4"
+```sh
+rokit add Acidgorgon/Ripple
 ```
 
-Then clone or download Ripple next to your project.
+or pin it in your project's `rokit.toml`:
+
+```toml
+[tools]
+ripple = "Acidgorgon/Ripple@0.1.0"
+```
+
+::: details Without Rokit
+Download the zip for your platform from the [releases page](https://github.com/Acidgorgon/Ripple/releases),
+or run the compiler from a checkout with [Lune](https://github.com/lune-org/lune):
+`lune run path/to/Ripple/src/init.luau -- game.ripple --out src/shared/Ripple`.
+:::
 
 ## 2. Write a schema
 
@@ -51,11 +60,14 @@ validated on the server, never sent. The [schema reference](/reference/schema) l
 ## 3. Generate
 
 ```sh
-lune run path/to/ripple/src/init.luau -- game.ripple --out src/shared/Ripple
+ripple game.ripple --out src/shared/Ripple
 ```
 
 This writes `Server.luau` and `Client.luau`. They are self-contained (no packages to install) and fully
-typed. Regenerate whenever you change the schema. Sync them into `ReplicatedStorage` with Rojo as usual.
+typed; commit them like any other source file and sync them into `ReplicatedStorage` with Rojo.
+
+While you work on the schema, add `--watch` (`-w`) and Ripple regenerates every time you save it. A schema
+error is printed and the last good output is kept.
 
 ## 4. Use it on the server
 
