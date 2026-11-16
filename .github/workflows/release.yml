@@ -1,0 +1,66 @@
+name: Release
+
+# Builds the `ripple` CLI for every platform rokit supports and publishes a GitHub release.
+# Run from Actions > Release > Run workflow with the version in src/init.luau (e.g. 0.1.0).
+# Games then install it with:  rokit add Acidgorgon/Ripple   (or rokit.toml: ripple = "Acidgorgon/Ripple@0.1.0")
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version without the v, must match VERSION in src/init.luau"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  LUNE_VERSION: "0.10.4"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "bad version: $VERSION"; exit 1; }
+          grep -q "local VERSION = \"$VERSION\"" src/init.luau || { echo "src/init.luau VERSION is not $VERSION"; exit 1; }
+
+      - name: Install lune
+        run: |
+          curl -sSfL -o lune.zip "https://github.com/lune-org/lune/releases/download/v${LUNE_VERSION}/lune-${LUNE_VERSION}-linux-x86_64.zip"
+          unzip -q lune.zip -d .lune && chmod +x .lune/lune
+
+      - name: Bundle
+        run: python3 scripts/bundle.py
+
+      - name: Build every platform
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p dist
+          for t in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64 windows-x86_64; do
+            exe=ripple; [[ $t == windows-* ]] && exe=ripple.exe
+            mkdir -p "stage/$t"
+            ./.lune/lune build build/ripple.luau -t "$t" -o "stage/$t/$exe"
+            (cd "stage/$t" && zip -q "../../dist/ripple-$VERSION-$t.zip" "$exe")
+          done
+          ls -la dist
+
+      - name: Smoke test
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          unzip -o -q "dist/ripple-$VERSION-linux-x86_64.zip" -d smoke
+          ./smoke/ripple --version
+          ./smoke/ripple examples/club.ripple --out smoke/out
+          test -s smoke/out/Server.luau && test -s smoke/out/Client.luau
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: gh release create "v$VERSION" dist/*.zip --target "$GITHUB_SHA" --title "Ripple v$VERSION" --generate-notes

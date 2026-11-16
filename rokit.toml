@@ -1,0 +1,3 @@
+# Tools for working on Ripple itself (games install the `ripple` CLI instead: rokit add Acidgorgon/Ripple)
+[tools]
+lune = "lune-org/lune@0.10.4"

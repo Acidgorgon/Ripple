@@ -39,13 +39,12 @@ Most of Ripple was written with [Claude](https://claude.ai), Anthropic's AI, to 
 
 ::: code-group
 
-```toml [rokit.toml]
-[tools]
-lune = "lune-org/lune@0.10.4"
+```sh [rokit]
+rokit add Acidgorgon/Ripple
 ```
 
 ```sh [generate]
-lune run ripple/src/init.luau -- game.ripple --out src/shared/Ripple
+ripple game.ripple --out src/shared/Ripple --watch
 ```
 
 ```ripple [game.ripple]
