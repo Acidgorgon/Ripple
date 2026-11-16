@@ -1,0 +1,17 @@
+{
+  "name": "ripple",
+  "scopeName": "source.ripple",
+  "aliases": ["blink"],
+  "patterns": [
+    { "name": "comment.block.ripple", "begin": "--\\[\\[", "end": "\\]\\]" },
+    { "name": "comment.line.double-dash.ripple", "match": "--.*$" },
+    { "name": "string.quoted.double.ripple", "match": "\"[^\"]*\"" },
+    { "name": "keyword.control.ripple", "match": "\\b(state|struct|map|enum|type|option|event|function|server)\\b" },
+    { "name": "storage.type.primitive.ripple", "match": "\\b(u8|u16|u32|i8|i16|i32|f32|f64|uint|int|boolean|string|buffer|vector|any|unknown)\\b" },
+    { "name": "variable.parameter.ripple", "match": "\\b(Scope|Data|From|Type|Call)\\b(?=\\s*:)" },
+    { "name": "constant.language.ripple", "match": "\\b(Player|All|Manual|Server|Client|Both|Reliable|Unreliable|SingleSync|SingleAsync|ManySync|ManyAsync)\\b" },
+    { "name": "constant.numeric.ripple", "match": "-?\\b\\d+(\\.\\d+)?\\b" },
+    { "name": "entity.name.type.ripple", "match": "\\b[A-Z][A-Za-z0-9_]*\\b" },
+    { "name": "keyword.operator.ripple", "match": "\\.\\.|\\?|\\[\\]" }
+  ]
+}

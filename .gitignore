@@ -1,0 +1,4 @@
+bench/gen/
+bench/host/build/
+tests/gen/
+bench/tools/
