@@ -1,0 +1,46 @@
+-- FM-shaped example: a private club per player and one shared match state.
+
+struct Card {
+	CardId: u16,
+	Level: u8,
+	Dupes: u8,
+	Bonus: u8,
+	Locked: boolean,
+}
+
+state Club {
+	Scope: Player,
+	Data: struct {
+		Cash: f64,
+		OfflinePending: f64,
+		Tier: u8,
+		KitColor: string,
+		Style: string,
+		Styles: map { [string]: boolean },
+		Slots: string[],
+		Stats: struct {
+			Wins: u32, Draws: u32, Losses: u32, Goals: u32, Conceded: u32,
+			Played: u32, PacksOpened: u32, Xp: u32, Streak: u16, BestStreak: u16,
+		},
+		Trophies: map { [string]: u16 },
+		Pity: u16,
+		Owned: map { [string]: Card },
+	},
+}
+
+struct MatchPlayer {
+	Stamina: f32,
+	Cards: u8,
+}
+
+state Match {
+	Scope: All,
+	Data: struct {
+		HomeScore: u8,
+		AwayScore: u8,
+		Clock: f32,
+		Phase: u8,
+		Possession: u8,
+		Players: MatchPlayer[],
+	},
+}

@@ -1,0 +1,9 @@
+{
+  "_comment": "Scenario registry: driver file scenarios/<name>.luau, the schema (per-library definitions live in adapters/<adapter>/), and frames_scale, a multiplier on --frames so cheap scenarios run long enough for stable timings.",
+  "scenarios": [
+    {"name": "club_tick", "schema": "club", "fork_only": false, "desc": "50 players x 300-card private club; Cash changes for everyone once a second (FM coin tick) + rare stat/card changes", "frames_scale": 2},
+    {"name": "club_churn", "schema": "club", "fork_only": false, "desc": "same clubs with heavy inventory traffic: packs of 5, level ups, sales, stat changes every few frames", "frames_scale": 1},
+    {"name": "club_join", "schema": "club", "fork_only": false, "desc": "one player per frame rejoins: full 300-card club snapshot replicated again", "frames_scale": 1},
+    {"name": "match_shared", "schema": "match", "fork_only": false, "desc": "one shared match state (clock every frame, 4 staminas, score) replicated to all 50 clients", "frames_scale": 2}
+  ]
+}
