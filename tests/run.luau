@@ -429,6 +429,132 @@ test("destroyed states are freed (no leak)", function()
 	assert(grew < 20000, `heap grew {grew} bytes over 300 create/destroy cycles`)
 end)
 
+test("Lighthouse: net() bytes per state match the buffers sent; probes balanced", function()
+	-- a fake shared.Lighthouse on every machine of a fresh world
+	local function fake()
+		local lh = { out = {}, inn = {}, probes = {}, depth = 0, misuse = 0 }
+		function lh.probe(name)
+			local p = lh.probes[name]
+			if p == nil then
+				p = { begins = 0, finishes = 0 }
+				function p.begin(self)
+					self.begins += 1
+					lh.depth += 1
+				end
+				function p.finish(self)
+					self.finishes += 1
+					lh.depth -= 1
+					if lh.depth < 0 then
+						lh.misuse += 1
+					end
+				end
+				lh.probes[name] = p
+			end
+			return p
+		end
+		function lh.net(lib, channel, dir, bytes, player)
+			assert(lib == "Ripple" and (dir == "in" or dir == "out") and bytes > 0, "bad net() call")
+			local t = if dir == "out" then lh.out else lh.inn
+			local key = if player then channel .. "@" .. player.Name else channel
+			t[key] = (t[key] or 0) + bytes
+			if player then
+				t["@" .. player.Name] = (t["@" .. player.Name] or 0) + bytes
+			end
+		end
+		function lh.count() end
+		function lh.gauge() end
+		return lh
+	end
+	local w2 = Mock.newWorld()
+	local ps = {}
+	for i = 1, 3 do
+		ps[i] = w2:addPlayer()
+	end
+	local R2 = w2.server:requireFile(ROOT .. "/tests/gen/Server.luau")
+	local C2 = {}
+	for i = 1, 3 do
+		C2[i] = w2.clients[i]:requireFile(ROOT .. "/tests/gen/Client.luau")
+	end
+	local slh = fake()
+	w2.server.shared.Lighthouse = slh
+	local clh = {}
+	for i = 1, 3 do
+		clh[i] = fake()
+		w2.clients[i].shared.Lighthouse = clh[i]
+	end
+	-- bytes actually handed to the remote, per player
+	local sent = {}
+	local allCalls = 0
+	local remote = w2.server.game:GetService("ReplicatedStorage"):FindFirstChild("Ripple")
+	local fc, fa = rawget(remote, "FireClient"), rawget(remote, "FireAllClients")
+	rawset(remote, "FireClient", function(self, player, b)
+		sent[player] = (sent[player] or 0) + buffer.len(b)
+		return fc(self, player, b)
+	end)
+	rawset(remote, "FireAllClients", function(self, b)
+		allCalls += 1
+		for _, p in ps do
+			sent[p] = (sent[p] or 0) + buffer.len(b)
+		end
+		return fa(self, b)
+	end)
+	local function step2()
+		w2:stepServer(1 / 30)
+		for i = 1, 3 do
+			w2:stepClient(i, 1 / 30)
+		end
+		w2:deliver()
+		for i = 1, 3 do
+			w2:receiveClient(i)
+		end
+		w2:receiveServer()
+	end
+
+	local b1 = R2.Big.new(ps[1], bigData())
+	local ws = R2.World.new({ Round = 1, Phase = "Lobby", Scores = {} })
+	step2() -- creates (private) + World create
+	ws.Round = 2
+	step2() -- shared stream only: FireAllClients
+	b1.F1 = 9
+	ws.Scores.a = 3
+	step2() -- private + shared riding along for player 1, shared alone for 2 and 3
+	local room = R2.Room.new({ Name = "r", Members = { x = true } }, { ps[2] })
+	step2()
+	R2.unsubscribe(room, ps[2]) -- a destroy op
+	step2()
+
+	assert((slh.out["Big@" .. ps[1].Name] or 0) > 0 and (slh.out["World@" .. ps[3].Name] or 0) > 0, "no out bytes")
+	assert((slh.out["Room@" .. ps[2].Name] or 0) > 0, "no Room bytes")
+	assert(allCalls > 0, "the FireAllClients path was not exercised")
+	for i, p in ps do
+		local total = slh.out["@" .. p.Name] or 0
+		assert(total == sent[p], `player {i}: net out {total} vs sent {sent[p]}`)
+		local inSum = 0
+		for _, st in { "Big", "World", "Room", "Ranged" } do
+			local o = slh.out[st .. "@" .. p.Name] or 0
+			local n = clh[i].inn[st] or 0
+			assert(o == n, `player {i} {st}: out {o} vs in {n}`)
+			inSum += n
+		end
+		assert(inSum == total, `player {i}: in {inSum} vs out {total}`)
+	end
+	for _, lh in { slh, clh[1], clh[2], clh[3] } do
+		assert(lh.depth == 0 and lh.misuse == 0, "probes unbalanced")
+		for name, p in lh.probes do
+			assert(p.begins == p.finishes and p.begins > 0, name .. " unbalanced or unused")
+		end
+	end
+	assert(slh.probes["Ripple.Encode"] and slh.probes["Ripple.Send"], "server probes")
+	assert(clh[1].probes["Ripple.Apply"] and clh[1].probes["Ripple.Events"], "client probes")
+
+	-- removed: nothing more is reported
+	w2.server.shared.Lighthouse = nil
+	local before = slh.out["@" .. ps[1].Name]
+	b1.F1 = 10
+	step2()
+	assert(slh.out["@" .. ps[1].Name] == before, "reported after shared.Lighthouse was removed")
+end)
+
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then
 	error("tests failed", 0)
