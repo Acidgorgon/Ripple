@@ -1,8 +1,8 @@
-// Shared by the Current, Ripple and Anchor documentation sites.
+// Shared by the Current, Ripple, Anchor and Tide documentation sites.
 // Keep this file identical in every repository: per-site settings live in config.mts.
 import type { DefaultTheme, HeadConfig, UserConfig } from 'vitepress'
 
-export type Library = 'current' | 'ripple' | 'anchor'
+export type Library = 'current' | 'ripple' | 'anchor' | 'tide'
 
 export interface Member {
   name: string
@@ -14,22 +14,27 @@ export const FAMILY: Record<Library, Member> = {
   current: { name: 'Current', role: 'Networking', site: 'https://acidgorgon.github.io/Current/' },
   ripple: { name: 'Ripple', role: 'State sync', site: 'https://acidgorgon.github.io/Ripple/' },
   anchor: { name: 'Anchor', role: 'Data saving', site: 'https://acidgorgon.github.io/Anchor/' },
+  tide: { name: 'Tide', role: 'Motion', site: 'https://acidgorgon.github.io/Tide/' },
 }
 
-const ORDER: Library[] = ['current', 'ripple', 'anchor']
+const ORDER: Library[] = ['current', 'ripple', 'anchor', 'tide']
 
 // The accent colour of each site is the one CSS variable --lib-accent, set here from the
-// presets in custom.css (--accent-current, --accent-ripple, --accent-anchor).
+// presets in custom.css (--accent-current, --accent-ripple, --accent-anchor, --accent-tide).
 const THEME_COLOR: Record<Library, string> = {
   current: '#0a64a8',
   ripple: '#08767c',
   anchor: '#1c3a80',
+  tide: '#5b3fa8',
 }
 
-/** The "Family" dropdown for the top navigation bar. */
+/** Name of the library family (Acid, 2026-11-17). */
+export const FAMILY_NAME = 'Harbor'
+
+/** The family dropdown for the top navigation bar. */
 export function familyNav(self: Library): DefaultTheme.NavItemWithChildren {
   return {
-    text: 'Family',
+    text: FAMILY_NAME,
     items: ORDER.map((id) => ({
       text: `${FAMILY[id].name} · ${FAMILY[id].role}`,
       link: FAMILY[id].site,
@@ -49,12 +54,12 @@ export function familyFooter(self: Library, options: FamilyOptions = {}): Defaul
     id === self ? `<strong>${FAMILY[id].name}</strong>` : `<a href="${FAMILY[id].site}">${FAMILY[id].name}</a>`,
   ).join(' · ')
   return {
-    message: `Part of the ${links} family of Roblox libraries. Released under the ${options.license ?? 'MIT'} license.`,
+    message: `Part of ${FAMILY_NAME}, a family of Roblox libraries: ${links}. Released under the ${options.license ?? 'MIT'} license.`,
   }
 }
 
 /**
- * Everything the three sites share: head tags (favicon, accent, theme colour), appearance,
+ * Everything the family sites share: head tags (favicon, accent, theme colour), appearance,
  * code highlighting, search and page chrome. Spread `config` into defineConfig and
  * `themeConfig` into its themeConfig, then add the site's own nav, sidebar and links.
  *
