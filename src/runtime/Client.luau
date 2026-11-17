@@ -246,19 +246,60 @@ local function flushEvents()
 	table.clear(firedAny)
 end
 
+-- Lighthouse (https://acidgorgon.github.io/Lighthouse/): read from shared.Lighthouse once per packet
+-- (the server sends at most one per frame). Only while it is present: bytes per state go to
+-- lh.net("Ripple", <state name>, "in", bytes), and the packet is wrapped in the probes "Ripple.Apply"
+-- (decode) and "Ripple.Events" (listeners and added/removed callbacks).
+local lhSeen, lhApply, lhEvents = nil, nil, nil
+local LH_NAME = {} -- [state id] = name; [0] = ops for states this client does not hold
+LH_NAME[0] = "Skipped"
+for _, st in STATES do
+	LH_NAME[st.id] = st.name
+end
+local LH_IN = table.create(#STATES, 0)
+LH_IN[0] = 0
+
+local function lighthouse()
+	local s = shared
+	local api = if s ~= nil then s.Lighthouse else nil
+	if api ~= lhSeen then
+		lhSeen = api
+		lhApply, lhEvents = nil, nil
+		if api ~= nil then
+			local ok, a, b = pcall(function()
+				return api.probe("Ripple.Apply"), api.probe("Ripple.Events")
+			end)
+			if ok then
+				lhApply, lhEvents = a, b
+			end
+		end
+	end
+	return if lhApply then api else nil
+end
+
 local function receive(b: buffer)
+	local lh = lighthouse()
+	if lh then
+		lhApply:begin()
+		for sid = 0, #LH_IN do
+			LH_IN[sid] = 0
+		end
+	end
 	rb = b
 	rp = 0
 	local len = buffer.len(b)
 	while rp < len do
+		local at = rp
 		local op = buffer.readu8(rb, rp)
 		rp += 1
 		local id = rvar()
+		local ent = nil -- the op's entity (Lighthouse attribution)
 		if op == OP_PATCH then
 			local e = ENT[id]
 			if e == nil then
 				error(`Ripple: patch for unknown state #{id} (client and server built from different schemas?)`, 0)
 			end
+			ent = e
 			e.state.patch(e.data)
 		elseif op == OP_BPATCH then
 			local n = rvar()
@@ -266,6 +307,7 @@ local function receive(b: buffer)
 			if e == nil then
 				rp += n -- a shared state this client does not hold (yet): skip it
 			else
+				ent = e
 				e.state.patch(e.data)
 			end
 		elseif op == OP_CREATE then
@@ -280,12 +322,14 @@ local function receive(b: buffer)
 			local data = st.full()
 			local e = { id = id, state = st, data = data, owner = owner }
 			ENT[id] = e
+			ent = e
 			table.insert(BY_STATE[sid], e)
 			table.insert(lifecycle, e)
 			table.insert(lifecycle, true)
 		elseif op == OP_DESTROY then
 			local e = ENT[id]
 			if e then
+				ent = e
 				ENT[id] = nil
 				local list = BY_STATE[e.state.id]
 				local i = table.find(list, e)
@@ -298,6 +342,20 @@ local function receive(b: buffer)
 		else
 			error(`Ripple: corrupt packet (op {op})`, 0)
 		end
+		if lh then
+			local sid = if ent then ent.state.id else 0
+			LH_IN[sid] += rp - at
+		end
+	end
+	if lh then
+		lhApply:finish()
+		for i = 0, #LH_IN do
+			local n = LH_IN[i]
+			if n > 0 then
+				lh.net("Ripple", LH_NAME[i], "in", n)
+			end
+		end
+		lhEvents:begin()
 	end
 	if nev > 0 then
 		flushEvents()
@@ -328,6 +386,9 @@ local function receive(b: buffer)
 				end
 			end
 		end
+	end
+	if lh then
+		lhEvents:finish()
 	end
 end
 

@@ -42,6 +42,7 @@ export default defineConfig({
           { text: 'Saving with Anchor / ProfileStore', link: '/guide/saving' },
           { text: 'Riding on Current', link: '/guide/current' },
           { text: 'Security', link: '/guide/security' },
+          { text: 'Profiling with Lighthouse', link: '/guide/profiling' },
         ],
       },
       {

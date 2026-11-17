@@ -619,7 +619,7 @@ local scratch = { buf = buffer.create(1024), pos = 0, cap = 1024 }
 -- segments (start, length) pointing into it. A patch seen by 10 players is 10 segments, 0 copies.
 local STAGE_CAP = 4096
 local stage = { buf = buffer.create(STAGE_CAP), pos = 0, cap = STAGE_CAP }
-local segS, segL, segNext = {}, {}, {}
+local segS, segL, segNext, segSid = {}, {}, {}, {} -- segSid: state id (Lighthouse attribution)
 local nseg = 0
 local HEAD, TAIL = {}, {} -- [player] = first / last segment index
 local ORDER = {} -- players with segments, in first-write order
@@ -632,6 +632,56 @@ local remote: RemoteEvent? = nil
 local sendFn: ((Player, buffer) -> ())? = nil
 local sendAllFn: ((buffer) -> ())? = nil
 
+-- Lighthouse (https://acidgorgon.github.io/Lighthouse/): read from shared.Lighthouse once per flush.
+-- Only while it is present: bytes per state per player go to lh.net("Ripple", <state name>, "out",
+-- bytes, player), and the flush is wrapped in the probes "Ripple.Encode" and "Ripple.Send".
+local lh = nil
+local lhSeen, lhEncode, lhSend = nil, nil, nil
+local LH_NAME = {} -- [state id] = name
+for _, st in STATES do
+	LH_NAME[st.id] = st.name
+end
+local LH_PRIV = table.create(#STATES, 0) -- [state id] = bytes for the player being sent to
+local LH_BC = table.create(#STATES, 0) -- [state id] = bytes in this frame's shared stream
+
+local function lighthouse()
+	local s = shared
+	local api = if s ~= nil then s.Lighthouse else nil
+	if api ~= lhSeen then
+		lhSeen = api
+		lhEncode, lhSend = nil, nil
+		if api ~= nil then
+			local ok, a, b = pcall(function()
+				return api.probe("Ripple.Encode"), api.probe("Ripple.Send")
+			end)
+			if ok then
+				lhEncode, lhSend = a, b
+			end
+		end
+	end
+	lh = if lhEncode then api else nil
+end
+
+-- Reports one player's bytes per state: the segment chain from `h`, plus the shared stream if it rode along.
+local function lhReport(player, h: number, withShared: boolean)
+	local acc = LH_PRIV
+	for sid = 1, #acc do
+		acc[sid] = if withShared then LH_BC[sid] else 0
+	end
+	local i = h
+	while i ~= 0 do
+		local sid = segSid[i]
+		acc[sid] += segL[i]
+		i = segNext[i]
+	end
+	for sid = 1, #acc do
+		local n = acc[sid]
+		if n > 0 then
+			lh.net("Ripple", LH_NAME[sid], "out", n, player)
+		end
+	end
+end
+
 local function load(w)
 	buf, pos, cap = w.buf, w.pos, w.cap
 end
@@ -639,11 +689,12 @@ local function save(w)
 	w.buf, w.pos, w.cap = buf, pos, cap
 end
 
-local function addSeg(player, start: number, len: number)
+local function addSeg(player, start: number, len: number, sid: number)
 	nseg += 1
 	segS[nseg] = start
 	segL[nseg] = len
 	segNext[nseg] = 0
+	segSid[nseg] = sid
 	local t = TAIL[player]
 	if t == nil then
 		HEAD[player] = nseg
@@ -708,7 +759,7 @@ local function removeSub(e, player)
 			writeHeader(OP_DESTROY, e.id)
 			local len = pos - start
 			save(stage)
-			addSeg(player, start, len)
+			addSeg(player, start, len, e.state.id)
 		end
 	end
 	local s = SUBS_OF[player]
@@ -769,6 +820,13 @@ local function newEntity(state, data, owner)
 end
 
 local function flush()
+	lighthouse()
+	if lh then
+		lhEncode:begin()
+		for sid = 1, #STATES do
+			LH_BC[sid] = 0
+		end
+	end
 	-- 1. Patches: encode each dirty entity once, copy to every subscriber.
 	for i = 1, ndirty do
 		local e = DIRTY[i]
@@ -787,6 +845,7 @@ local function flush()
 				local sbuf = buf
 				save(scratch)
 				load(bcast)
+				local start = pos
 				writeHeader(OP_BPATCH, e.id)
 				wvar(n)
 				if pos + n > cap then
@@ -794,6 +853,10 @@ local function flush()
 				end
 				buffer.copy(buf, pos, sbuf, 0, n)
 				pos += n
+				if lh then
+					local sid = e.state.id
+					LH_BC[sid] += pos - start
+				end
 				save(bcast)
 			else
 				load(stage)
@@ -802,8 +865,9 @@ local function flush()
 				e.D.patch(root)
 				local len = pos - start
 				save(stage)
+				local sid = e.state.id
 				for s = 1, ns do
-					addSeg(subs[s], start, len)
+					addSeg(subs[s], start, len, sid)
 				end
 			end
 		end
@@ -829,17 +893,22 @@ local function flush()
 				e.D.full(e.root.p)
 				local len = pos - start
 				save(stage)
+				local sid = e.state.id
 				for _, player in e.pending do
 					e.pendSet[player] = nil
 					e.subSet[player] = true
 					table.insert(e.subs, player)
-					addSeg(player, start, len)
+					addSeg(player, start, len, sid)
 				end
 				table.clear(e.pending)
 			end
 		end
 	end
 	-- 3. One remote call per player with data; the shared stream rides along (or goes out once to all).
+	if lh then
+		lhEncode:finish()
+		lhSend:begin()
+	end
 	local nb = bcast.pos
 	local shared: buffer? = nil
 	if nb > 0 then
@@ -899,6 +968,9 @@ local function flush()
 		else
 			(remote :: any):FireClient(player, out)
 		end
+		if lh then
+			lhReport(player, h, shared ~= nil)
+		end
 	end
 	norder = 0
 	nseg = 0
@@ -915,6 +987,11 @@ local function flush()
 			else
 				(remote :: any):FireAllClients(shared)
 			end
+			if lh then
+				for _, player in Players:GetPlayers() do
+					lhReport(player, 0, true)
+				end
+			end
 		else
 			for _, player in Players:GetPlayers() do
 				if got and got[player] then
@@ -924,8 +1001,14 @@ local function flush()
 				else
 					(remote :: any):FireClient(player, shared)
 				end
+				if lh then
+					lhReport(player, 0, true)
+				end
 			end
 		end
+	end
+	if lh then
+		lhSend:finish()
 	end
 end
 
