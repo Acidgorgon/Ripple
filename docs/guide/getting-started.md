@@ -13,7 +13,7 @@ or pin it in your project's `rokit.toml`:
 
 ```toml
 [tools]
-ripple = "Acidgorgon/Ripple@0.1.0"
+ripple = "Acidgorgon/Ripple@0.1.1"
 ```
 
 ::: details Without Rokit
