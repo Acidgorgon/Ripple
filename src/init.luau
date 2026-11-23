@@ -1,14 +1,15 @@
 -- Ripple compiler CLI:
 --   ripple <schema.ripple> [--out <dir>] [--watch]          (installed binary)
 --   lune run src/init.luau -- <schema.ripple> [--out <dir>]  (from a checkout)
--- Writes <dir>/Server.luau and <dir>/Client.luau (default dir: next to the schema, "<name>.ripple" -> "<name>/").
+-- Writes <dir>/Server.luau and <dir>/Client.luau (default dir: next to the schema, "<name>.ripple" -> "<name>/"),
+-- or where the schema's `option ServerOutput` / `option ClientOutput` say (relative to the schema).
 local fs = require("@lune/fs")
 local process = require("@lune/process")
 local task = require("@lune/task")
 local Parser = require("@self/Parser")
 local Generator = require("@self/Generator")
 
-local VERSION = "0.1.0"
+local VERSION = "0.1.1"
 local BUNDLED = (_G :: any).RIPPLE_RUNTIME -- set by the single-file build (scripts/bundle.py)
 
 local SRC_DIR = string.match(debug.info(1, "s"), "^(.*)[/\\]") or "."
@@ -49,6 +50,7 @@ if not input then
 	process.exit(1)
 end
 outDir = outDir or (string.gsub(input, "%.ripple$", ""))
+local SCHEMA_DIR = string.match(input, "^(.*)[/\\]") or ""
 
 local function runtime(name)
 	if BUNDLED then
@@ -86,12 +88,36 @@ local function compile(): boolean
 		print(gen)
 		return false
 	end
-	if not fs.isDir(outDir) then
-		fs.writeDir(outDir)
+	-- `option ServerOutput` / `option ClientOutput` (paths relative to the schema, like Current's) win
+	-- over --out for their file, so the server module can live where clients can't read it.
+	local function outputPath(option: string, default: string): string?
+		local value = schema.options[option]
+		if value == nil then
+			return default
+		end
+		if type(value) ~= "string" or not string.match(value, "%.luau?$") then
+			print(`ripple: option {option} must be a path ending in .luau, got {tostring(value)}`)
+			return nil
+		end
+		if string.match(value, "^%a:[/\\]") or string.match(value, "^[/\\]") then
+			return value
+		end
+		return if SCHEMA_DIR == "" then value else SCHEMA_DIR .. "/" .. value
 	end
-	fs.writeFile(outDir .. "/Server.luau", splice(runtime("Server.luau"), gen.server, gen.types))
-	fs.writeFile(outDir .. "/Client.luau", splice(runtime("Client.luau"), gen.client, gen.clientTypes))
-	print(`ripple: wrote {outDir}/Server.luau and {outDir}/Client.luau ({#schema.states} state(s))`)
+	local serverPath = outputPath("ServerOutput", outDir .. "/Server.luau")
+	local clientPath = outputPath("ClientOutput", outDir .. "/Client.luau")
+	if not serverPath or not clientPath then
+		return false
+	end
+	for _, path in { serverPath, clientPath } do
+		local dir = string.match(path, "^(.*)[/\\]")
+		if dir and dir ~= "" and not fs.isDir(dir) then
+			fs.writeDir(dir)
+		end
+	end
+	fs.writeFile(serverPath, splice(runtime("Server.luau"), gen.server, gen.types))
+	fs.writeFile(clientPath, splice(runtime("Client.luau"), gen.client, gen.clientTypes))
+	print(`ripple: wrote {serverPath} and {clientPath} ({#schema.states} state(s))`)
 	return true
 end
 

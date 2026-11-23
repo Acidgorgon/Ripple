@@ -85,6 +85,14 @@ From a checkout you can also run `lune run src/init.luau -- game.ripple --out sr
 This writes `Server.luau` and `Client.luau`. Each is self-contained, with no runtime dependency and full
 Luau types for your states.
 
+To keep the server module out of `ReplicatedStorage` (where every client downloads it), give each module its
+own path in the schema. Paths are relative to the schema and win over `--out`:
+
+```
+option ServerOutput = "src/server/Ripple/Server.luau"
+option ClientOutput = "src/shared/Ripple/Client.luau"
+```
+
 ## Schema
 
 | Type | Notes |
