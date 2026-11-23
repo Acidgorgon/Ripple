@@ -69,6 +69,21 @@ typed; commit them like any other source file and sync them into `ReplicatedStor
 While you work on the schema, add `--watch` (`-w`) and Ripple regenerates every time you save it. A schema
 error is printed and the last good output is kept.
 
+### Keep the server module away from clients
+
+Everything in `ReplicatedStorage` is downloaded by every client, so an exploiter can read the server
+module, including your `server` fields and validation. Clients cannot change state either way, but the
+server module has no reason to be there. Give each module its own path at the top of the schema (relative
+to the schema file, like Current's options):
+
+```ripple
+option ServerOutput = "src/server/Ripple/Server.luau"  -- ServerScriptService
+option ClientOutput = "src/shared/Ripple/Client.luau"  -- ReplicatedStorage
+```
+
+These options win over `--out` for their file. The server then requires
+`ServerScriptService.Server.Ripple.Server`. Needs Ripple 0.1.1 or later.
+
 ## 4. Use it on the server
 
 ```lua

@@ -148,3 +148,5 @@ state Name {
 | Option | Default | Effect |
 |---|---|---|
 | `RemoteName` | `"Ripple"` | name of the RemoteEvent created in ReplicatedStorage |
+| `ServerOutput` | `<out>/Server.luau` | where the server module is written, relative to the schema. Put it in `ServerScriptService` or `ServerStorage` so clients never download it. Wins over `--out`. (0.1.1) |
+| `ClientOutput` | `<out>/Client.luau` | where the client module is written, relative to the schema. Wins over `--out`. (0.1.1) |
